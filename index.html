@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Equilibrio</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12303a">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#12303a;--plate:#f4efe6;--rim:#2b6f8f;--ball:#e4572e;--ink:#f4efe6;--mute:#8fb3c0;--gold:#f2c14e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:'Fredoka','Trebuchet MS',system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;padding:24px 20px}
+.screen.on{display:flex}
+#menu{justify-content:center;gap:20px}
+h1{font-size:clamp(40px,12vw,64px);margin:0;font-weight:700;letter-spacing:-.01em}
+.sub{margin:0;color:var(--mute);font-size:17px;text-align:center}
+button{font:inherit;font-weight:600;border:0;border-radius:999px;cursor:pointer;color:var(--bg);background:var(--plate);padding:14px 28px;font-size:18px;transition:transform .12s}
+button:active{transform:scale(.95)}
+button:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+#play,#again{background:var(--ball);color:#fff}
+#play{width:min(78vw,320px);height:min(78vw,320px);border-radius:50%;font-size:clamp(34px,10vw,48px);box-shadow:0 0 0 10px var(--rim),0 12px 30px #0006}
+#records{width:min(86vw,340px);margin:0;padding:0;list-style:none}
+#records li{display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid #ffffff22;font-size:18px}
+#records li:first-child{color:var(--gold);font-weight:700}
+#records .empty{color:var(--mute);justify-content:center;border:0}
+#game{padding:0}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+#score{position:absolute;top:calc(env(safe-area-inset-top,0px) + 18px);left:0;right:0;text-align:center;pointer-events:none}
+#score b{display:block;font-size:56px;line-height:1;font-variant-numeric:tabular-nums}
+#score span{color:var(--mute);font-size:15px}
+#hint{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 22px);left:0;right:0;text-align:center;color:var(--mute);font-size:15px;pointer-events:none;padding:0 20px}
+#over{background:#12303ae6;justify-content:center;gap:14px;z-index:5}
+#over .big{font-size:80px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#badge{font-size:26px;font-weight:700;color:var(--gold);min-height:34px}
+#badge.pop{animation:pop .7s cubic-bezier(.2,1.6,.4,1) both}
+.btns{display:flex;flex-direction:column;gap:12px;margin-top:14px;width:min(80vw,300px)}
+@keyframes pop{0%{transform:scale(0) rotate(-12deg)}100%{transform:scale(1) rotate(0)}}
+#over .big.pop{animation:cnt .5s ease-out both}
+@keyframes cnt{0%{transform:scale(.4);opacity:0}100%{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#badge.pop,#over .big.pop{animation:none}}
+</style>
+</head>
+<body>
+<section id="menu" class="screen on">
+  <h1>Equilibrio</h1>
+  <p class="sub">Inclina el teléfono, esquiva los pinchos y cuidado con el hielo (resbala) y la baba (frena). También funciona con el stick de un mando.</p>
+  <button id="play">Jugar</button>
+  <ol id="records"></ol>
+</section>
+
+<section id="game" class="screen">
+  <canvas id="c"></canvas>
+  <div id="score"><b id="sc">0.0</b><span>segundos</span></div>
+  <div id="hint"></div>
+</section>
+
+<section id="over" class="screen">
+  <div id="badge"></div>
+  <div class="big" id="final">0.0</div>
+  <p class="sub">segundos en equilibrio</p>
+  <div class="btns">
+    <button id="again">Jugar de nuevo</button>
+    <button id="home">Menú principal</button>
+  </div>
+</section>
+
+<script>
+const $=id=>document.getElementById(id);
+const screens={menu:$('menu'),game:$('game'),over:$('over')};
+function show(n){for(const k in screens)screens[k].classList.toggle('on',k===n)}
+
+// ---- Récords ----
+const KEY='equilibrio-records';
+function loadRecs(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveRecs(r){try{localStorage.setItem(KEY,JSON.stringify(r))}catch(e){}}
+let memRecs=loadRecs();
+function renderRecs(){
+  const ul=$('records');
+  if(!memRecs.length){ul.innerHTML='<li class="empty">Aún no hay récords</li>';return}
+  ul.innerHTML=memRecs.map((r,i)=>`<li><span>${i+1}. ${r.d}</span><span>${r.s.toFixed(1)} s</span></li>`).join('');
+}
+function addRec(s){
+  const d=new Date().toLocaleDateString('es',{day:'numeric',month:'short'});
+  const isBest=!memRecs.length||s>memRecs[0].s;
+  memRecs.push({s,d});memRecs.sort((a,b)=>b.s-a.s);memRecs=memRecs.slice(0,5);saveRecs(memRecs);
+  return isBest;
+}
+
+// ---- Entrada (giroscopio + respaldo táctil/teclado) ----
+let tilt={x:0,y:0},base=null,gyroOK=false,raw=null,touchT=null,keys={};
+function onOri(e){
+  if(e.gamma==null||e.beta==null)return;
+  gyroOK=true;raw={x:e.gamma,y:e.beta};
+}
+addEventListener('deviceorientation',onOri);
+addEventListener('keydown',e=>keys[e.key]=1);
+addEventListener('keyup',e=>keys[e.key]=0);
+const cv=$('c'),ctx=cv.getContext('2d');
+function setTouch(e){const r=cv.getBoundingClientRect();touchT={x:(e.clientX-r.left-r.width/2)/(r.width/2),y:(e.clientY-r.top-r.height/2)/(r.height/2)}}
+cv.addEventListener('pointerdown',e=>{if(!gyroOK)setTouch(e)});
+cv.addEventListener('pointermove',e=>{if(!gyroOK&&e.buttons||touchT&&!gyroOK&&e.pointerType==='touch')setTouch(e)});
+cv.addEventListener('pointerup',()=>{touchT=null});
+function readTilt(){
+  if(gyroOK&&raw){
+    if(!base)base={...raw};
+    tilt.x=Math.max(-1.6,Math.min(1.6,(raw.x-base.x)/22));
+    tilt.y=Math.max(-1.6,Math.min(1.6,(raw.y-base.y)/22));
+  }else{
+    let x=0,y=0;
+    if(touchT){x=touchT.x*1.4;y=touchT.y*1.4}
+    if(keys.ArrowLeft)x-=1;if(keys.ArrowRight)x+=1;if(keys.ArrowUp)y-=1;if(keys.ArrowDown)y+=1;
+    tilt.x=x;tilt.y=y;
+  }
+}
+
+// ---- Juego ----
+let W,H,S,cx,cy,dpr,R0,Rmin,br;
+function resize(){
+  dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  S=Math.min(W,H*0.8);cx=W/2;cy=H*0.54;
+  R0=S*0.44;br=S*0.04;Rmin=br*2.1;
+}
+addEventListener('resize',resize);
+let st,raf,last;
+function start(){
+  resize();
+  st={x:0,y:0,vx:0,vy:0,t:0,fall:0,state:'play',hz:[],next:3,zn:[],nz:8};
+  base=raw?{...raw}:null;
+  $('hint').textContent=gyroOK?'Inclina el teléfono y esquiva los pinchos':'Sin giroscopio: arrastra el dedo o usa las flechas';
+  show('game');last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);
+}
+async function askPerm(){
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      const r=await DeviceOrientationEvent.requestPermission();
+      if(r==='granted'){removeEventListener('deviceorientation',onOri);addEventListener('deviceorientation',onOri)}
+    }
+  }catch(e){}
+}
+function radius(t){return Rmin+(R0-Rmin)*Math.exp(-t/22)}
+function zInfo(z,R){const zr=Math.min(br*2.4,R*0.42);return{x:Math.cos(z.a)*z.fr*(R-zr),y:Math.sin(z.a)*z.fr*(R-zr),r:zr}}
+function padTilt(){
+  const ps=navigator.getGamepads?navigator.getGamepads():[];
+  for(const p of ps){
+    if(!p||!p.connected)continue;
+    let x=p.axes[0]||0,y=p.axes[1]||0;
+    const b=i=>p.buttons[i]&&p.buttons[i].pressed;
+    if(b(14))x=-1;if(b(15))x=1;if(b(12))y=-1;if(b(13))y=1;
+    if(Math.hypot(x,y)>0.15){tilt.x=x*1.4;tilt.y=y*1.4;return}
+  }
+}
+function loop(now){
+  const dt=Math.min((now-last)/1000,0.04);last=now;
+  if(st.state==='play'){
+    st.t+=dt;readTilt();padTilt();
+    const u=S/400,g=1100*u,Rz=radius(st.t);
+    let keep=0.45,gm=1;
+    // zonas: hielo (resbala) y baba (frena), duran 8 s
+    st.zn=st.zn.filter(z=>st.t-z.t0<8);
+    if(st.t>=st.nz){
+      if(st.zn.length<2)st.zn.push({a:Math.random()*6.283,fr:Math.random(),t0:st.t,k:Math.random()<.5?'ice':'goo'});
+      st.nz=st.t+5+Math.random()*3;
+    }
+    for(const z of st.zn){
+      const age=st.t-z.t0;
+      if(age>0.6&&age<7.5){
+        const i=zInfo(z,Rz);
+        if(Math.hypot(st.x-i.x,st.y-i.y)<i.r){if(z.k==='ice'){keep=0.93;gm=1.15}else{keep=0.01;gm=0.55}}
+      }
+    }
+    st.vx+=(tilt.x*g*gm-st.x*1.2)*dt;
+    st.vy+=(tilt.y*g*gm-st.y*1.2)*dt;
+    const f=Math.pow(keep,dt);st.vx*=f;st.vy*=f;
+    st.x+=st.vx*dt;st.y+=st.vy*dt;
+    if(Math.hypot(st.x,st.y)>radius(st.t)){st.state='fall';st.fall=0}
+    // pinchos: avisan 1 s, son letales hasta los 5 s y desaparecen
+    const Rn=radius(st.t),hr=Math.min(br*1.15,Rn*0.28);
+    st.hz=st.hz.filter(h=>st.t-h.t0<5.4);
+    if(st.t>=st.next){
+      if(st.hz.length<Math.min(4,1+Math.floor(st.t/15))){
+        for(let k=0;k<12;k++){
+          const a=Math.random()*6.283,f=0.15+Math.random()*0.85;
+          const px=Math.cos(a)*f*(Rn-hr),py=Math.sin(a)*f*(Rn-hr);
+          if(Math.hypot(px-st.x,py-st.y)>hr+br*3.5){st.hz.push({a,f,t0:st.t});break}
+        }
+      }
+      st.next=st.t+Math.max(1.2,3-st.t/30);
+    }
+    if(st.state==='play')for(const h of st.hz){
+      const age=st.t-h.t0;
+      if(age>1.1&&age<5){
+        const px=Math.cos(h.a)*h.f*(Rn-hr),py=Math.sin(h.a)*h.f*(Rn-hr);
+        if(Math.hypot(px-st.x,py-st.y)<hr*0.9+br*0.8){st.state='fall';st.fall=0}
+      }
+    }
+    $('sc').textContent=st.t.toFixed(1);
+    if(st.t>3)$('hint').textContent='';
+  }else{
+    st.fall+=dt;st.x+=st.vx*dt;st.y+=st.vy*dt;st.vy+=300*(S/400)*dt;
+    if(st.fall>0.8){draw();gameOver();return}
+  }
+  draw();raf=requestAnimationFrame(loop);
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const R=radius(st.t),fa=st.state==='fall'?Math.max(0,1-st.fall/0.8):1;
+  // sombra y plato
+  ctx.fillStyle='#0004';ctx.beginPath();ctx.arc(cx+R*0.06,cy+R*0.1,R*1.03,0,7);ctx.fill();
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--rim');
+  ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.fill();
+  const g=ctx.createRadialGradient(cx-R*.2,cy-R*.2,R*.1,cx,cy,R);
+  g.addColorStop(0,'#fffaf0');g.addColorStop(1,'#e2d9c8');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,R*0.88,0,7);ctx.fill();
+  ctx.strokeStyle='#2b6f8f55';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,R*0.55,0,7);ctx.stroke();
+  // zonas
+  for(const z of st.zn){
+    const age=st.t-z.t0,i=zInfo(z,R),al=age<.6?age/.6:age>7.5?Math.max(0,(8-age)/.5):1,ice=z.k==='ice';
+    ctx.save();ctx.translate(cx+i.x,cy+i.y);ctx.globalAlpha=al*.85;
+    ctx.fillStyle=ice?'#9fdcff':'#a6b82e';ctx.strokeStyle=ice?'#ffffff':'#5c6a12';ctx.lineWidth=3;
+    ctx.beginPath();
+    if(ice){ctx.arc(0,0,i.r,0,7)}else{for(let k=0;k<=24;k++){const an=k/24*6.283,rr=i.r*(1+.08*Math.sin(an*5+age*3));ctx.lineTo(Math.cos(an)*rr,Math.sin(an)*rr)}ctx.closePath()}
+    ctx.fill();ctx.stroke();
+    if(ice){ctx.beginPath();ctx.moveTo(-i.r*.5,-i.r*.1);ctx.lineTo(i.r*.1,-i.r*.55);ctx.moveTo(-i.r*.3,i.r*.2);ctx.lineTo(i.r*.45,-i.r*.3);ctx.stroke()}
+    else{ctx.fillStyle='#d6e26a';ctx.beginPath();ctx.arc(-i.r*.3,-i.r*.2,i.r*.12,0,7);ctx.arc(i.r*.25,i.r*.3,i.r*.09,0,7);ctx.fill()}
+    ctx.restore();
+  }
+  // pinchos
+  const hr=Math.min(br*1.15,R*0.28);
+  for(const h of st.hz){
+    const age=st.t-h.t0,px=cx+Math.cos(h.a)*h.f*(R-hr),py=cy+Math.sin(h.a)*h.f*(R-hr);
+    if(age<1.1){
+      ctx.save();ctx.globalAlpha=.45+.4*Math.sin(age*20);ctx.strokeStyle='#c0243a';ctx.lineWidth=3;ctx.setLineDash([6,5]);
+      ctx.beginPath();ctx.arc(px,py,hr*(1.6-.5*age),0,7);ctx.stroke();ctx.restore();
+    }else{
+      const sz=hr*Math.min(1,(age-1.1)/.15)*(age>5?Math.max(0,1-(age-5)/.4):1);
+      ctx.save();ctx.translate(px,py);ctx.rotate(age*.8);ctx.fillStyle='#c0243a';ctx.beginPath();
+      for(let i=0;i<16;i++){const rr=i%2?sz*.65:sz*1.25,an=i*Math.PI/8;ctx.lineTo(Math.cos(an)*rr,Math.sin(an)*rr)}
+      ctx.closePath();ctx.fill();ctx.fillStyle='#3a0d16';ctx.beginPath();ctx.arc(0,0,sz*.4,0,7);ctx.fill();ctx.restore();
+    }
+  }
+  // pelota
+  const sc=st.state==='fall'?fa:1,bx=cx+st.x,by=cy+st.y,r=br*sc;
+  ctx.fillStyle='#0003';ctx.beginPath();ctx.ellipse(bx+r*.3,by+r*.45,r,r*.85,0,0,7);ctx.fill();
+  const bg=ctx.createRadialGradient(bx-r*.35,by-r*.35,r*.1,bx,by,r);
+  bg.addColorStop(0,'#ff9a6b');bg.addColorStop(1,'#e4572e');
+  ctx.fillStyle=bg;ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fill();
+}
+function gameOver(){
+  const s=st.t,best=addRec(s);
+  $('final').textContent=s.toFixed(1);
+  const b=$('badge'),f=$('final');
+  b.className='';f.className='big';void b.offsetWidth;
+  b.textContent=best?'¡Nuevo récord!':'';
+  if(best)b.className='pop';
+  f.className='big pop';
+  show('over');
+}
+
+$('play').onclick=async()=>{await askPerm();start()};
+$('again').onclick=()=>start();
+$('home').onclick=()=>{renderRecs();show('menu')};
+renderRecs();resize();
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
