@@ -227,7 +227,7 @@ function onOri(e){if(e.gamma==null||e.beta==null)return;gyroOK=true;raw={x:e.gam
 addEventListener('deviceorientation',onOri);
 addEventListener('keydown',e=>keys[e.key]=1);
 addEventListener('keyup',e=>keys[e.key]=0);
-const cv=$('c'),ctx=cv.getContext('2d',{desynchronized:true});
+const cv=$('c'),ctx=cv.getContext('2d',{alpha:false});
 function setTouch(e){const r=cv.getBoundingClientRect();touchT={x:(e.clientX-r.left-r.width/2)/(r.width/2),y:(e.clientY-r.top-r.height/2)/(r.height/2)}}
 cv.addEventListener('pointerdown',e=>{if(!gyroOK)setTouch(e)});
 cv.addEventListener('pointermove',e=>{if(!gyroOK&&(e.buttons||e.pointerType==='touch'))setTouch(e)});
@@ -399,7 +399,7 @@ function loop(now){
     }
     if(!st.sh&&!st.hr)for(const c of st.pu){const p=place(c);if(Math.hypot(p.x-st.x,p.y-st.y)<br*1.8){
       st.sh=c.k==='sh';st.hr=c.k==='hr';st.pu=[];sfx('pick');vib(30);hud();break}}
-    if(st.t-st.lb>.1){st.lb=st.t;st.hue=((mode?345:200)+st.t*4)%360;root.style.setProperty('--bg',`hsl(${st.hue} ${mode?55:45}% ${mode?18:20}%)`)}
+    st.hue=((mode?345:200)+st.t*4)%360;if(st.t-st.lb>.5){st.lb=st.t;root.style.setProperty('--bg',`hsl(${st.hue} ${mode?55:45}% ${mode?18:20}%)`)}
     const txt=st.t.toFixed(1);if(txt!==st.lt){st.lt=txt;$('sc').textContent=txt}
     if(st.t>3)$('hint').textContent='';
   }else{
@@ -431,7 +431,7 @@ function drawPlate(sk){
   ctx.strokeStyle=`hsl(${st.hue} 55% 42%)`;ctx.lineWidth=br*.5;ctx.lineJoin='round';ctx.stroke();
 }
 function draw(){
-  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=`hsl(${st.hue} ${mode?55:45}% ${mode?18:20}%)`;ctx.fillRect(0,0,W,H);
   const sk=SK[skin],C=st.C,fa=st.state==='fall'?Math.max(0,1-st.fall/.8):1,b=st.brk,ba=b?st.t-b.t0:0;
   if(b&&brokenNow()){ctx.save();ctx.beginPath();ctx.rect(0,0,W,H);wedge(b);ctx.clip('evenodd');drawPlate(sk);ctx.restore()}
   else drawPlate(sk);
@@ -479,8 +479,8 @@ function draw(){
     const age=st.t-z.t0,dx=Math.cos(z.an),dy=Math.sin(z.an),L=W+H,x0=cx+z.px,y0=cy+z.py;
     if(age>z.w+.9)continue;
     ctx.save();ctx.beginPath();ctx.moveTo(x0-dx*L,y0-dy*L);ctx.lineTo(x0+dx*L,y0+dy*L);
-    if(age<z.w){ctx.globalAlpha=Math.sin(age*28)>0?.9:.2;ctx.strokeStyle='#ff3040';ctx.lineWidth=2;ctx.stroke()}
-    else{ctx.shadowColor='#ff3040';ctx.shadowBlur=20;ctx.strokeStyle='#ff5060';ctx.lineWidth=br;ctx.stroke();ctx.shadowBlur=0;ctx.strokeStyle='#fff';ctx.lineWidth=br*.3;ctx.stroke()}
+    if(age<z.w){ctx.strokeStyle='#ff3040';ctx.globalAlpha=.15;ctx.lineWidth=br*.9;ctx.stroke();ctx.globalAlpha=Math.sin(age*24)>0?1:.35;ctx.lineWidth=4;ctx.stroke()}
+    else{ctx.strokeStyle='#ff3040';ctx.globalAlpha=.3;ctx.lineWidth=br*1.9;ctx.stroke();ctx.globalAlpha=1;ctx.strokeStyle='#ff5060';ctx.lineWidth=br*1.1;ctx.stroke();ctx.strokeStyle='#fff';ctx.lineWidth=br*.35;ctx.stroke()}
     ctx.restore();
   }
   // pelota
@@ -513,6 +513,7 @@ $('play').onclick=async()=>{try{auInit()}catch(e){}await askPerm();start(0)};
 $('hard').onclick=async()=>{if(!hardOK()){sfx('warn');vib(40);return}try{auInit()}catch(e){}await askPerm();start(1)};
 $('again').onclick=()=>start(mode);
 $('home').onclick=()=>{renderRecs();show('menu')};
+addEventListener('error',e=>{try{$('hint').textContent='Error: '+e.message}catch(_){}});
 renderRecs();resize();
 addEventListener('load',()=>{try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}});
 </script>
